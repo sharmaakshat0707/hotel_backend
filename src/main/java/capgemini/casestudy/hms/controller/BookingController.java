@@ -21,9 +21,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import capgemini.casestudy.hms.dto.BookingDTO;
+import capgemini.casestudy.hms.dto.GuestDTO;
 import capgemini.casestudy.hms.model.Booking;
 import capgemini.casestudy.hms.model.Guest;
 import capgemini.casestudy.hms.service.BookingService;
+import capgemini.casestudy.hms.service.EmailService;
 import capgemini.casestudy.hms.service.GuestService;
 
 @CrossOrigin("*")
@@ -36,6 +38,8 @@ public class BookingController {
 
 	@Autowired
 	private GuestService guestService;
+	
+	@Autowired EmailService emailService;
 
 	@GetMapping
 	public String get() {
@@ -50,17 +54,31 @@ public class BookingController {
 
 	@PreAuthorize("hasAnyRole('USER', 'RECEPTIONIST','OWNER')")
 	@PostMapping("/bookingpost")
-	public ResponseEntity<?> addBooking(@RequestBody BookingDTO bookingDTO) {
-		Booking booking = bookingService.saveBooking(bookingDTO);
-		if(booking==null) {
-			return ResponseEntity.badRequest().build();
-		}
-		return ResponseEntity.ok(booking);
+	  public ResponseEntity<?> addBooking(@RequestBody BookingDTO bookingDTO) throws NotFoundException {
+        Booking booking = bookingService.saveBooking(bookingDTO);
+        if (booking == null) {
+            return ResponseEntity.badRequest().build();
+        }
+        
+        
+        Long guestId = bookingDTO.getGuestIds().get(0);
+        Guest guest = guestService.getGuest(guestId);
+        if (guest == null) {
+            return ResponseEntity.notFound().build();
+        }
+        String recipientEmail = guest.getEmail();
 
-	}
+        // Send email notification
+        String subject = "Booking Confirmation";
+        String message = "Your booking has been confirmed. Booking ID: " + booking.getBookingId() + "\n" +"Your check in date and check out date are:" + " checkInDate: " + booking.getCheckInDate()+" " + "\n" + " checkOutDate: " + booking.getCheckOutDate() +"\n\n\n"+ "Enjoy Your Stay";
+
+        emailService.sendBookingDetails(recipientEmail, subject, message);
+
+        return ResponseEntity.ok(booking);
+    }
 
 	// get employee by id rest api
-	@PreAuthorize("hasAnyRole('RECEPTIONIST','OWNER')")
+	@PreAuthorize("hasAnyRole('RECEPTIONIST','OWNER','USER')")
 	@GetMapping("/allBookings")
 	public List<Booking> getAllBookings() {
 		return bookingService.getAllBookings();
@@ -68,10 +86,9 @@ public class BookingController {
 	}
 
 	@PreAuthorize("hasAnyRole('RECEPTIONIST','OWNER')")
-	@DeleteMapping("/{id} ")
+	@DeleteMapping("/{id}")
 	public ResponseEntity<Void> deleteBooking(@PathVariable int id) {
 		bookingService.deleteBooking(id);
-		
 		return ResponseEntity.noContent().build();
 	}
 
